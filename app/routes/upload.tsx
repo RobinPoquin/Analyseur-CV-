@@ -1,15 +1,81 @@
 import { type FormEvent, useState } from 'react'
 import Navbar from "~/components/Navbar";
 import FileUploader from "~/components/FileUploader";
+import {usePuterStore} from "~/lib/puter";
+import {useNavigate} from "react-router";
+import {convertPdfToImage} from "~/lib/pdf2img";
+import {generateUUID} from "~/lib/utils";
+import {prepareInstructions} from "../../constants";
 
 const Upload = () => {
-    const [isProcessing, setIsProcessing] = useState(false); // indique si l'analyse est en cours
-    const [statusText, setStatusText] = useState('') // texte affiché pendant le traitement
+    // Récupère les modules du store (auth, fichiers, IA, stockage)
+    const { auth, isLoading, fs, ai, kv } = usePuterStore();
+    const navigate = useNavigate();
+
+    const [isProcessing, setIsProcessing] = useState(false); // état global du process
+    const [statusText, setStatusText] = useState('') // message affiché à l'utilisateur
     const [file, setFile] = useState<File | null>(null) // fichier sélectionné
 
     // Récupère le fichier depuis le composant enfant
     const handleFileSelect = (file: File | null) => {
         setFile(file)
+    }
+
+    //Processus d'analyse du CV
+    const handleAnalyze = async (
+            { companyName, jobTitle, jobDescription, file }
+            : { companyName: string, jobTitle: string, jobDescription: string; file: File}
+        ) => {        setIsProcessing(true);
+
+        // Étape 1 : upload du PDF
+        setStatusText('Importation en cours...');
+        const uploadedFile = await fs.upload([file]);
+        if (!uploadedFile) return setStatusText("Erreur: Erreur lors de l'import du PDF...") // Si échec → stop process
+
+        // Étape 2 : conversion PDF → image (nécessaire pour l'IA)
+        setStatusText('Convertion en image en cours...');
+        const imageFile = await convertPdfToImage(file);
+        if (!imageFile.file) return setStatusText(`Echec: ${imageFile.error}`)
+
+        // Étape 3 : upload de l'image
+        setStatusText("Import de l'image");
+        const uploadedImage = await fs.upload([imageFile.file])
+        if (!uploadedImage) return setStatusText("Erreur: Erreur lors de l'import de l'image...")
+
+        // Étape 4 : préparation des données
+        setStatusText('Préparation des données...');
+        const uuid = generateUUID(); // identifiant unique pour le CV
+
+        const data = {
+            id: uuid,
+            resumePath: uploadedFile.path, // chemin du PDF
+            imagePath: uploadedImage.path, // chemin de l'image
+            companyName, jobTitle, jobDescription,
+            feedback: '', // sera rempli après analyse
+        }
+        // Sauvegarde initiale (sans feedback)
+        await kv.set(`resume:${ uuid }`, JSON.stringify(data));
+
+        // Étape 5 : appel IA pour analyser le CV
+        setStatusText('Analyse en cours...');
+
+        const feedback = await ai.feedback(
+            uploadedFile.path, // fichier à analyser
+            prepareInstructions({ jobTitle, jobDescription}) // prompt IA
+        )
+        if (!feedback) return setStatusText("Erreur : Echec lors de l'analyse du CV");
+
+        // Le retour peut être string OU tableau
+        const feedbackText = typeof feedback.message.content === 'string'
+            ? feedback.message.content
+            : feedback.message.content[0].text;
+
+        // Conversion JSON → objet exploitable
+        data.feedback = JSON.parse(feedbackText);
+        // Mise à jour avec le feedback final
+        await kv.set(`resume:${ uuid }`, JSON.stringify(data));
+        setStatusText('Analyse terminé ! Redirection...');
+        console.log(data)
     }
 
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -23,17 +89,13 @@ const Upload = () => {
         const formData = new FormData(form);
 
         // Récupération des champs via leur "name"
-        const companyName = formData.get('company-name');
-        const jobTile = formData.get('job-title');
-        const jobDescription = formData.get('job-description');
+        const companyName = formData.get('company-name') as string;
+        const jobTitle = formData.get('job-title') as string;
+        const jobDescription = formData.get('job-description') as string;
 
-        // Debug : vérifie les données récupérées + fichier
-        console.log({
-            companyName,
-            jobTile,
-            jobDescription,
-            file
-        });
+        if (!file) return;
+
+        handleAnalyze({ companyName, jobTitle, jobDescription, file})
     }
 
     return (
@@ -65,7 +127,7 @@ const Upload = () => {
                             </div>
 
                             <div className="form-div">
-                                <label htmlFor="job-title">Poste Occupé</label>
+                                <label htmlFor="job-title">Nom du Poste</label>
                                 <input type="text" name="job-title" id="job-title" />
                             </div>
 

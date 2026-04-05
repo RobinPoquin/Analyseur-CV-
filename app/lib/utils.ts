@@ -10,3 +10,6 @@ export function formatSize(bytes: number): string {
     // Convertit la taille dans la bonne unité + limite à 2 décimales
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
+
+// Génère un identifiant unique pour identifier chaque CV
+export const generateUUID = () => crypto.randomUUID();
