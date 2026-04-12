@@ -1,6 +1,9 @@
 import { Link, useNavigate, useParams } from "react-router";
 import { useEffect, useState } from "react";
 import { usePuterStore } from "~/lib/puter";
+import Summary from "~/components/Summary";
+import ATS from "~/components/ATS";
+import Details from "~/components/Details";
 
 // Métadonnées de la page (titre + description)
 export const meta = () => ([
@@ -14,7 +17,7 @@ const Resume = () => {
 
     const [imageUrl, setImageUrl] = useState(''); // URL de l'image du CV
     const [resumeUrl, setResumeUrl] = useState(''); // URL du PDF
-    const [feedback, setFeedback] = useState(''); // résultat de l'analyse IA
+    const [feedback, setFeedback] = useState<Feedback | null>(null); // résultat de l'analyse IA
 
     const navigate = useNavigate();
 
@@ -96,7 +99,9 @@ const Resume = () => {
                     {feedback ? (
                         // Affiche les résultats quand disponibles
                         <div className="flex flex-col gap-8 animate-in fade-in duration-1000">
-                            Sommaire ATS
+                            <Summary feedback={feedback} />
+                            <ATS score={feedback.ATS.score || 0} suggestions={feedback.ATS.tips || []} />
+                            <Details feedback={feedback} />
                         </div>
                     ) : (
                         // Loader pendant l'analyse
