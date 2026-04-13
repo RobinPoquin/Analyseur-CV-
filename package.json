@@ -13,7 +13,7 @@
     "@react-router/serve": "7.13.2",
     "clsx": "^2.1.1",
     "isbot": "^5.1.36",
-    "pdfjs-dist": "^5.5.207",
+    "pdfjs-dist": "^4.4.168",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-dropzone": "^15.0.0",
